@@ -14,7 +14,7 @@ Configuration ArcGISInstall{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"}
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_InstallMsiPackage
@@ -299,14 +299,19 @@ Configuration ArcGISInstall{
                     }
                 }
                 'Desktop' {
-                    $Argumments =""
+                    $Arguments =""
                     if($ConfigurationData.ConfigData.Desktop.SeatPreference -ieq "Fixed"){
-                        $Argumments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`" MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                        $Arguments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`" MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
                     }else{
-                        $Argumments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Desktop.EsriLicenseHost)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Desktop.SoftwareClass)`" SEAT_PREFERENCE=`"$($ConfigurationData.ConfigData.Desktop.SeatPreference)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`"  MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                        $Arguments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Desktop.EsriLicenseHost)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Desktop.SoftwareClass)`" SEAT_PREFERENCE=`"$($ConfigurationData.ConfigData.Desktop.SeatPreference)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`"  MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
                     }
-                    if($ConfigurationData.ConfigData.Desktop.EnableEUEI -and $ConfigurationData.ConfigData.Desktop.EnableEUEI -eq $False){
-                        $Arguments += " ENABLEEUEI=0"
+                    
+                    if ($ConfigurationData.ConfigData.Desktop.BlockAddIns -match '^[0-4]+$') {
+                        $Arguments += " BLOCKADDINS=$($ConfigurationData.ConfigData.Desktop.BlockAddIns)" #ensure valid blockaddin value / defauts to allow all addins (0)
+                    }
+
+                    if(-not($ConfigurationData.ConfigData.Desktop.ContainsKey("EnableEUEI")) -or ($ConfigurationData.ConfigData.Desktop.ContainsKey("EnableEUEI") -and -not($ConfigurationData.ConfigData.Desktop.EnableEUEI)) ){
+						$Arguments += " ENABLEEUEI=0"
                     }  
 
                     ArcGIS_Install DesktopInstall
@@ -314,7 +319,7 @@ Configuration ArcGISInstall{
                         Name = "Desktop"
                         Version = $ConfigurationData.ConfigData.DesktopVersion
                         Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
-                        Arguments =   $Argumments
+                        Arguments = $Arguments
                         Ensure = "Present"
                     }
 
@@ -330,22 +335,44 @@ Configuration ArcGISInstall{
                 }
                 'Pro'
                 {
+                    # Installation Notes: https://pro.arcgis.com/en/pro-app/get-started/arcgis-pro-installation-administration.htm
                     $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
-                    $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    $Arguments = "/qb Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`""
+
+                    # TODO: The SOFTWARE_CLASS does not get added if not supported, should this fail? Currently it uses the default handling mechanism. 
+                    if ($ConfigurationData.ConfigData.Pro.SoftwareClass){
+                        if (@("viewer","editor","professional") -icontains $ConfigurationData.ConfigData.Pro.SoftwareClass.ToLower()) {
+                            $Arguments += " SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`""
+                        }
+                    }
+
+                    if (-not ([string]::IsNullOrEmpty($ConfigurationData.ConfigData.Pro.Installer.InstallDir))){
+                        $Arguments += " INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    }
+
+                    if ($ConfigurationData.ConfigData.Pro.BlockAddIns -match '^[0-5]+$') {
+                        $Arguments += " BLOCKADDINS=$($ConfigurationData.ConfigData.Pro.BlockAddIns)" #ensure valid blockaddin value / defauts to allow all addins (0)
+                    }
+
                     if($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE"){
                         $Arguments += " ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Pro.EsriLicenseHost)`"" 
                     }
 
-                    if($ConfigurationData.ConfigData.Pro.LockAuthSettings -and $ConfigurationData.ConfigData.Pro.LockAuthSettings -eq $False){
-                        $Arguments += " LOCK_AUTH_SETTINGS=False"
-                    }   
-                    if($ConfigurationData.ConfigData.Pro.EnableEUEI -and $ConfigurationData.ConfigData.Pro.EnableEUEI -eq $False){
-                        $Arguments += " ENABLEEUEI=0"
-                    } 
-                    if($ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup -and $ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup -eq $False){
-                        $Arguments += " CHECKFORUPDATESATSTARTUP=0"
-                    }   
+                    # Pro installed for all users. Per User installs for Pro not supported
+                    $Arguments += " ALLUSERS=1"
 
+                    if(-not($ConfigurationData.ConfigData.Pro.ContainsKey("LockAuthSettings")) -or ($ConfigurationData.ConfigData.Pro.ContainsKey("LockAuthSettings") -and -not($ConfigurationData.ConfigData.Pro.LockAuthSettings)) ){
+						$Arguments += " LOCK_AUTH_SETTINGS=False"
+                    }
+					
+					if(-not($ConfigurationData.ConfigData.Pro.ContainsKey("EnableEUEI")) -or ($ConfigurationData.ConfigData.Pro.ContainsKey("EnableEUEI") -and -not($ConfigurationData.ConfigData.Pro.EnableEUEI)) ){
+						$Arguments += " ENABLEEUEI=0"
+                    }
+					
+					if(-not($ConfigurationData.ConfigData.Pro.ContainsKey("CheckForUpdatesAtStartup")) -or ($ConfigurationData.ConfigData.Pro.ContainsKey("CheckForUpdatesAtStartup") -and -not($ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup)) ){
+						$Arguments += " CHECKFORUPDATESATSTARTUP=0"
+                    }  
+                    
                     ArcGIS_Install ProInstall{
                         Name = "Pro"
                         Version = $ConfigurationData.ConfigData.ProVersion
